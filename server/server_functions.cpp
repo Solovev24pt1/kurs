@@ -1,40 +1,37 @@
 #include "server.h"
 
-int parse_arguments(int argc, char* argv[], ServerParams& params) {
+
+bool ServerConfig::parseArguments(int argc, char* argv[]) {
     if (argc == 1) {
-        print_help();
-        return 1;
+        printHelp();
+        return false;
     }
     
     if (argc == 2 && strcmp(argv[1], "-h") == 0) {
-        print_help();
-        return 1;
+        printHelp();
+        return false;
     }
-    
-    params.port = 33333;
-    params.log_file = "server.log";
     
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-S") == 0 && i + 1 < argc) {
-            params.client_db_file = argv[++i];
+            client_db_file_ = argv[++i];
         } else if (strcmp(argv[i], "-H") == 0 && i + 1 < argc) {
-           
-            i++; 
+            hash_type_ = argv[++i];
         } else if (strcmp(argv[i], "-T") == 0 && i + 1 < argc) {
-          
-            i++;
+            data_type_ = argv[++i];
         }
     }
     
-    if (params.client_db_file.empty()) {
+    if (client_db_file_.empty()) {
         std::cerr << "Ошибка: не указан файл базы клиентов" << std::endl;
-        return 1;
+        return false;
     }
     
-    return 0;
+    return true;
 }
 
-void print_help() {
+// справка
+void ServerConfig::printHelp() const {
     std::cout << "Использование: ./server_static -T float -H SHA1 -S client" << std::endl;
     std::cout << "Параметры:" << std::endl;
     std::cout << "  -S <file>    Файл базы клиентов (обязательный)" << std::endl;
@@ -44,296 +41,218 @@ void print_help() {
     std::cout << std::endl << "Сервер всегда работает на порту 33333" << std::endl;
 }
 
-int load_client_db(const std::string& filename, ClientDatabase& db) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Ошибка открытия файла базы клиентов: " << filename << std::endl;
-        return -1;
-    }
-    
-    std::string line;
-    while (std::getline(file, line)) {
-       
-        if (line.empty() || line[0] == '#' || line[0] == '\n') continue;
-        
-        std::istringstream iss(line);
-        std::string login, password_hash;
-        
-        if (iss >> login >> password_hash) {
-          
-            if (password_hash.length() != HASH_HEX_SIZE) {
-                std::cerr << "Предупреждение: некорректная длина хэша для пользователя " << login << std::endl;
-                continue;
-            }
-            
-            ClientInfo client;
-            client.login = login;
-            client.password_hash = password_hash;
-            db.clients.push_back(client);
-        }
-    }
-    
-    std::cout << "Загружено " << db.clients.size() << " клиентов из базы данных" << std::endl;
-    return 0;
-}
 
-void free_client_db(ClientDatabase& db) {
-    db.clients.clear();
-}
-
-int authenticate_client(int client_socket, ClientDatabase& db) {
-    char buffer[BUFFER_SIZE];
-    ssize_t bytes_received;
-    
-    bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
+bool ClientSession::receiveAuthentication(std::string& login, std::string& salt, std::string& hash) {
+    char buffer[1024];
+    ssize_t bytes_received = recv(client_socket_, buffer, sizeof(buffer) - 1, 0);
     if (bytes_received <= 0) {
-        return -1;
+        return false;
     }
     buffer[bytes_received] = '\0';
     
-    char login[MAX_LOGIN_LENGTH];
-    char salt_hex[SALT_HEX_SIZE + 1];
-    char received_hash[HASH_HEX_SIZE + 1];
-    
-    if (sscanf(buffer, "%49s %16s %64s", login, salt_hex, received_hash) != 3) {
-        send(client_socket, "ERR", 3, 0);
-        return -1;
+    char login_buf[50], salt_buf[17], hash_buf[65];
+    if (sscanf(buffer, "%49s %16s %64s", login_buf, salt_buf, hash_buf) != 3) {
+        return false;
     }
     
-    if (strlen(salt_hex) != SALT_HEX_SIZE) {
-        send(client_socket, "ERR", 3, 0);
-        return -1;
+    login = login_buf;
+    salt = salt_buf;
+    hash = hash_buf;
+    
+    return true;
+}
+
+bool ClientSession::authenticate() {
+    std::string login, salt, received_hash;
+    
+    if (!receiveAuthentication(login, salt, received_hash)) {
+        send(client_socket_, "ERR", 3, 0);
+        return false;
     }
     
-    bool user_found = false;
-    std::string expected_hash;
-    
-    for (const auto& client : db.clients) {
-        if (client.login == login) {
-            expected_hash = client.password_hash;
-            user_found = true;
-            break;
-        }
+    if (salt.length() != 16) {
+        send(client_socket_, "ERR", 3, 0);
+        return false;
     }
     
-    if (!user_found) {
-        send(client_socket, "ERR", 3, 0);
-        return -1;
-    }
-    
-    if (strcmp(received_hash, expected_hash.c_str()) == 0) {
-        send(client_socket, "OK", 2, 0);
-        return 0;
+    if (client_db_.authenticate(login, received_hash)) {
+        send(client_socket_, "OK", 2, 0);
+        logger_.log("Клиент " + login + " аутентифицирован", false);
+        return true;
     } else {
-        send(client_socket, "ERR", 3, 0);
-        return -1;
+        send(client_socket_, "ERR", 3, 0);
+        logger_.log("Ошибка аутентификации для клиента " + login, false);
+        return false;
     }
 }
 
-
-int process_client_vectors(int client_socket) {
+bool ClientSession::processVectors() {
     uint32_t num_vectors;
     
-   
-    if (!recv_all(client_socket, &num_vectors, sizeof(num_vectors))) {
-        return -1;
+    if (!NetworkUtils::recvAll(client_socket_, &num_vectors, sizeof(num_vectors))) {
+        return false;
     }
     
-  
-    num_vectors = ntohl(num_vectors);
+    num_vectors = NetworkUtils::networkToHost(num_vectors);
     
     uint32_t num_results = num_vectors;
-    uint32_t num_results_net = htonl(num_results);
-    if (!send_all(client_socket, &num_results_net, sizeof(num_results_net))) {
-        return -1;
+    uint32_t num_results_net = NetworkUtils::hostToNetwork(num_results);
+    
+    if (!NetworkUtils::sendAll(client_socket_, &num_results_net, sizeof(num_results_net))) {
+        return false;
     }
     
     for (uint32_t i = 0; i < num_vectors; i++) {
         uint32_t vector_size;
         
-        if (!recv_all(client_socket, &vector_size, sizeof(vector_size))) {
-            return -1;
+        if (!NetworkUtils::recvAll(client_socket_, &vector_size, sizeof(vector_size))) {
+            return false;
         }
-        vector_size = ntohl(vector_size);
+        vector_size = NetworkUtils::networkToHost(vector_size);
         
         Vector vector;
-        vector.size = vector_size;
-        vector.data.resize(vector_size);
+        std::vector<int64_t> data(vector_size);
         
-        if (!recv_all(client_socket, vector.data.data(), vector_size * sizeof(int64_t))) {
-            return -1;
+        if (!NetworkUtils::recvAll(client_socket_, data.data(), vector_size * sizeof(int64_t))) {
+            return false;
         }
         
-       
         for (uint32_t j = 0; j < vector_size; j++) {
-            vector.data[j] = be64toh(vector.data[j]);
+            data[j] = NetworkUtils::networkToHost(data[j]);
         }
         
-   
-        int64_t average = calculate_vector_average(vector);
+        vector.setData(data);
+        int64_t average = VectorProcessor::calculateAverage(vector);
         
-        average = htobe64(average);
-        if (!send_all(client_socket, &average, sizeof(average))) {
-            return -1;
+        average = NetworkUtils::hostToNetwork(average);
+        if (!NetworkUtils::sendAll(client_socket_, &average, sizeof(average))) {
+            return false;
         }
     }
     
-    return 0;
+    return true;
 }
 
-int64_t calculate_vector_average(const Vector& vector) {
-    if (vector.data.empty()) {
-        return 0;
-    }
-    
-    int64_t sum = 0;
-    
-    for (const auto& value : vector.data) {
-        if (sum > 0 && value > INT64_MAX - sum) {
-           
-            return INT64_MIN; 
+void ClientSession::run() {
+    if (authenticate()) {
+        if (processVectors()) {
+            logger_.log("Обработка векторов завершена успешно", false);
+        } else {
+            logger_.log("Ошибка обработки векторов", false);
         }
-        if (sum < 0 && value < INT64_MIN - sum) {
-           
-            return INT64_MIN; 
-        }
-        sum += value;
     }
-    
-    return sum / static_cast<int64_t>(vector.data.size());
 }
 
-void log_message(const std::string& log_file, const std::string& message, bool is_critical) {
-    std::ofstream file(log_file, std::ios::app);
-    if (!file.is_open()) {
-        return;
+
+bool Server::initialize(int argc, char* argv[]) {
+    if (!config_.parseArguments(argc, argv)) {
+        return false;
     }
     
-    auto now = std::chrono::system_clock::now();
-    std::time_t time = std::chrono::system_clock::to_time_t(now);
-    std::tm* tm_info = std::localtime(&time);
+    logger_.setLogFile(config_.getLogFile());
     
-    char timestamp[20];
-    std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+    if (!client_db_.loadFromFile(config_.getClientDbFile())) {
+        std::cerr << "Ошибка загрузки базы клиентов" << std::endl;
+        return false;
+    }
     
-    file << "[" << timestamp << "] " << (is_critical ? "CRITICAL" : "INFO") 
-         << ": " << message << std::endl;
+    std::cout << "Загружено " << client_db_.getClientCount() 
+              << " клиентов из базы данных" << std::endl;
+    
+    return true;
 }
 
-int start_server(ServerParams& params, ClientDatabase& db) {
-    int server_socket, client_socket;
-    struct sockaddr_in server_addr, client_addr;
-    socklen_t client_len = sizeof(client_addr);
-    
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_socket < 0) {
-        perror("Ошибка создания сокета");
-        return -1;
+bool Server::createSocket() {
+    server_socket_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket_ < 0) {
+        logger_.log("Ошибка создания сокета", true);
+        return false;
     }
     
     int opt = 1;
-    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("Ошибка setsockopt");
-        close(server_socket);
-        return -1;
+    if (setsockopt(server_socket_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        logger_.log("Ошибка setsockopt", true);
+        close(server_socket_);
+        return false;
     }
     
+    return true;
+}
+
+bool Server::bindSocket() {
+    sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(params.port);
+    server_addr.sin_port = htons(config_.getPort());
     
-    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Ошибка привязки сокета");
-        close(server_socket);
-        return -1;
+    if (bind(server_socket_, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        logger_.log("Ошибка привязки сокета", true);
+        close(server_socket_);
+        return false;
     }
     
-    if (listen(server_socket, MAX_CLIENTS) < 0) {
-        perror("Ошибка прослушивания");
-        close(server_socket);
-        return -1;
+    return true;
+}
+
+bool Server::listenForConnections() {
+    if (listen(server_socket_, 10) < 0) {
+        logger_.log("Ошибка прослушивания", true);
+        close(server_socket_);
+        return false;
     }
     
-    std::cout << "Сервер запущен на порту " << params.port << std::endl;
+    return true;
+}
+
+void Server::handleClient(int client_socket) {
+    sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    getpeername(client_socket, (struct sockaddr*)&client_addr, &client_len);
     
-    while (true) {
-        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
+    std::cout << "Новое соединение от " << inet_ntoa(client_addr.sin_addr) 
+              << ":" << ntohs(client_addr.sin_port) << std::endl;
+    
+    ClientSession session(client_socket, client_db_, logger_);
+    session.run();
+    
+    close(client_socket);
+    std::cout << "Соединение закрыто" << std::endl;
+}
+
+bool Server::start() {
+    if (!createSocket() || !bindSocket() || !listenForConnections()) {
+        return false;
+    }
+    
+    std::cout << "Сервер запущен на порту " << config_.getPort() << std::endl;
+    logger_.log("Сервер запущен", false);
+    
+    running_ = true;
+    
+    while (running_) {
+        sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        
+        int client_socket = accept(server_socket_, (struct sockaddr *)&client_addr, &client_len);
         if (client_socket < 0) {
-            log_message(params.log_file, "Ошибка принятия соединения", false);
+            if (running_) {
+                logger_.log("Ошибка принятия соединения", false);
+            }
             continue;
         }
         
-        std::cout << "Новое соединение от " << inet_ntoa(client_addr.sin_addr) 
-                  << ":" << ntohs(client_addr.sin_port) << std::endl;
-    
-        if (authenticate_client(client_socket, db) == 0) {
-            std::cout << "Клиент аутентифицирован" << std::endl;
-            
-         
-            if (process_client_vectors(client_socket) == 0) {
-                std::cout << "Обработка векторов завершена успешно" << std::endl;
-            } else {
-                log_message(params.log_file, "Ошибка обработки векторов", false);
-            }
-        } else {
-            std::cout << "Ошибка аутентификации клиента" << std::endl;
-        }
-        
-        close(client_socket);
-        std::cout << "Соединение закрыто" << std::endl;
+        handleClient(client_socket);
     }
     
-    close(server_socket);
-    return 0;
-}
-
-
-bool send_all(int socket, const void* buffer, size_t length) {
-    const char* ptr = static_cast<const char*>(buffer);
-    while (length > 0) {
-        ssize_t sent = send(socket, ptr, length, 0);
-        if (sent <= 0) return false;
-        ptr += sent;
-        length -= sent;
-    }
     return true;
 }
 
-
-bool recv_all(int socket, void* buffer, size_t length) {
-    char* ptr = static_cast<char*>(buffer);
-    while (length > 0) {
-        ssize_t received = recv(socket, ptr, length, 0);
-        if (received <= 0) return false;
-        ptr += received;
-        length -= received;
+void Server::stop() {
+    running_ = false;
+    if (server_socket_ != -1) {
+        close(server_socket_);
+        server_socket_ = -1;
     }
-    return true;
-}
-
-
-std::string sha256_hash(const std::string& data) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, data.c_str(), data.length());
-    SHA256_Final(hash, &sha256);
-    
-    return bytes_to_hex(hash, SHA256_DIGEST_LENGTH);
-}
-
-
-std::string bytes_to_hex(const unsigned char* data, size_t length) {
-    std::string hex;
-    hex.reserve(length * 2);
-    
-    for (size_t i = 0; i < length; ++i) {
-        char buf[3];
-        snprintf(buf, sizeof(buf), "%02x", data[i]);
-        hex.append(buf);
-    }
-    
-    return hex;
+    logger_.log("Сервер остановлен", false);
 }
