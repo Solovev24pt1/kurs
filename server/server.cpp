@@ -3,7 +3,7 @@
 int main(int argc, char* argv[]) {
     Server server;
     
-    if (!server.initialize(argc, argv)) {
+    if (!server.init(argc, argv)) {
         return 1;
     }
     
