@@ -57,7 +57,7 @@ class Server {
     bool parseArgs(int argc, char* argv[]);
 
     void printHelp() const {
-        std::cout << "Использование: ./server -d db.txt -LU log.txt -a 127.6.0.1 -p 33333" << std::endl;
+        std::cout << "Использование: ./server -d db.txt -LU log.txt -a 127.0.0.1 -p 33333" << std::endl;
         std::cout << "Параметры:" << std::endl;
         std::cout << "  -d <file>    Файл базы клиентов (обязательный)" << std::endl;
         std::cout << "  -LU <file>   Файл логов (обязательный)" << std::endl;
