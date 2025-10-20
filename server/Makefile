@@ -1,7 +1,7 @@
 CXX = g++
 CXXFLAGS = -Wall -Wextra -std=c++17 -pedantic
 LIBS = -lssl -lcrypto
-TARGET = server_static
+TARGET = server
 SOURCES = server.cpp server_functions.cpp
 HEADERS = server.h
 OBJECTS = $(SOURCES:.cpp=.o)

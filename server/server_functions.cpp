@@ -1,6 +1,11 @@
 #include "server.h"
 
 void Logger::log(const std::string& msg, bool critical) const {
+    if (log_file_.empty()) {
+        std::cout << msg << std::endl;
+        return;
+    }
+    
     std::ofstream file(log_file_, std::ios::app);
     if (!file.is_open()) return;
 
@@ -136,17 +141,25 @@ bool Server::parseArgs(int argc, char* argv[]) {
     }
     
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-S") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
             client_db_file_ = argv[++i];
-        } else if (strcmp(argv[i], "-H") == 0 && i + 1 < argc) {
-            i++; // Пропускаем параметр хэш-функции
-        } else if (strcmp(argv[i], "-T") == 0 && i + 1 < argc) {
-            i++; // Пропускаем параметр типа данных
+        } else if (strcmp(argv[i], "-LU") == 0 && i + 1 < argc) {
+            log_file_ = argv[++i];
+        } else if (strcmp(argv[i], "-a") == 0 && i + 1 < argc) {
+            address_ = argv[++i];
+        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            port_ = std::stoi(argv[++i]);
         }
     }
     
     if (client_db_file_.empty()) {
         std::cerr << "Ошибка: не указан файл базы клиентов" << std::endl;
+        printHelp();
+        return false;
+    }
+    
+    if (log_file_.empty()) {
+        std::cerr << "Ошибка: не указан файл логов" << std::endl;
         printHelp();
         return false;
     }
@@ -182,11 +195,16 @@ bool Server::start() {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(port_);
     
+    if (inet_pton(AF_INET, address_.c_str(), &addr.sin_addr) <= 0) {
+        logger_.log("Ошибка преобразования адреса: " + address_, true);
+        close(server_sock_);
+        return false;
+    }
+    
     if (bind(server_sock_, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        logger_.log("Ошибка привязки сокета к порту " + std::to_string(port_), true);
+        logger_.log("Ошибка привязки сокета к адресу " + address_ + ":" + std::to_string(port_), true);
         close(server_sock_);
         return false;
     }
@@ -199,10 +217,10 @@ bool Server::start() {
     
     running_ = true;
     
-    std::cout << "Сервер запущен на порту " << port_ << std::endl;
+    std::cout << "Сервер запущен на " << address_ << ":" << port_ << std::endl;
     std::cout << "Ожидание подключений..." << std::endl;
     
-    logger_.log("Сервер запущен на порту " + std::to_string(port_));
+    logger_.log("Сервер запущен на " + address_ + ":" + std::to_string(port_));
     
     while (running_) {
         sockaddr_in client_addr;

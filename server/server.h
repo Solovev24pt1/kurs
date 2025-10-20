@@ -17,7 +17,7 @@
 class Logger {
     std::string log_file_;
 public:
-    Logger(const std::string& log_file = "server.log") : log_file_(log_file) {}
+    Logger(const std::string& log_file = "") : log_file_(log_file) {}
     void log(const std::string& msg, bool critical = false) const;
 };
 
@@ -45,8 +45,9 @@ public:
 };
 
 class Server {
-    std::string client_db_file_ = "client.db";
-    std::string log_file_ = "server.log";
+    std::string client_db_file_;
+    std::string log_file_;
+    std::string address_ = "127.0.0.1";
     int port_ = 33333;
     ClientDB db_;
     Logger logger_;
@@ -56,13 +57,13 @@ class Server {
     bool parseArgs(int argc, char* argv[]);
 
     void printHelp() const {
-        std::cout << "Использование: ./server_static -T float -H SHA1 -S client" << std::endl;
+        std::cout << "Использование: ./server -d db.txt -LU log.txt -a 127.6.0.1 -p 33333" << std::endl;
         std::cout << "Параметры:" << std::endl;
-        std::cout << "  -S <file>    Файл базы клиентов (обязательный)" << std::endl;
-        std::cout << "  -H <hash>    Используемая хэш-функция" << std::endl;
-        std::cout << "  -T <type>    Тип данных" << std::endl;
+        std::cout << "  -d <file>    Файл базы клиентов (обязательный)" << std::endl;
+        std::cout << "  -LU <file>   Файл логов (обязательный)" << std::endl;
+        std::cout << "  -a <addr>    IP-адрес для привязки" << std::endl;
+        std::cout << "  -p <port>    Порт для прослушивания" << std::endl;
         std::cout << "  -h           Показать эту справку" << std::endl;
-        std::cout << std::endl << "Сервер всегда работает на порту 33333" << std::endl;
     }
 
 public:
@@ -71,4 +72,3 @@ public:
     bool start();
     void stop();
 };
-
