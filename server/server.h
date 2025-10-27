@@ -8,11 +8,13 @@
 #include <cstdint>
 #include <cstring>
 #include <unordered_map>
+#include <algorithm>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <openssl/sha.h>
+#include <iomanip>
 
 class Logger {
     std::string log_file_;
@@ -25,7 +27,8 @@ class ClientDB {
     std::unordered_map<std::string, std::string> clients_;
 public:
     bool load(const std::string& filename);
-    bool auth(const std::string& login, const std::string& hash) const;
+    bool auth(const std::string& login, const std::string& password) const;
+    bool authWithHash(const std::string& login, const std::string& received_hash, const std::string& salt) const;
     size_t getClientCount() const { return clients_.size(); }
 };
 
