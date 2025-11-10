@@ -60,8 +60,10 @@ class Server {
     int server_sock_ = -1;
     bool running_ = false;
 
+public: 
     bool parseArgs(int argc, char* argv[]);
 
+private:
     void printHelp() const {
         std::cout << "Использование: ./server -d db.txt -LU log.txt -a 127.0.0.1 -p 33333" << std::endl;
         std::cout << "Параметры:" << std::endl;
@@ -79,4 +81,4 @@ public:
     void stop();
 };
 
-#endif // SERVER_H
+#endif 
