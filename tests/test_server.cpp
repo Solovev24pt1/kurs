@@ -119,8 +119,14 @@ SUITE(ClientSessionTest) {
 SUITE(EdgeCaseTest) {
     
     TEST(LoadNonExistentFile) {
+   
+        std::stringstream error_buffer;
+        std::streambuf* original_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
+        
         ClientDB db;
         CHECK(!db.load("nonexistent_file.txt"));
+     
+        std::cerr.rdbuf(original_cerr);
     }
     
     TEST(AuthNonExistentUser) {
@@ -130,18 +136,31 @@ SUITE(EdgeCaseTest) {
     }
     
     TEST(ParseInvalidArgs) {
+
+        std::stringstream error_buffer;
+        std::streambuf* original_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
+        
         Server server;
         char* argv[] = {(char*)"server"};
         CHECK(!server.parseArgs(1, argv));
+        
+     
+        std::cerr.rdbuf(original_cerr);
     }
     
     TEST(ParseMissingRequiredArgs) {
+        std::stringstream error_buffer;
+        std::streambuf* original_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
+        
         Server server;
         char* argv[] = {
             (char*)"server",
             (char*)"-d", (char*)"db.txt"
         };
         CHECK(!server.parseArgs(3, argv));
+        
+        // Восстанавливаем stderr
+        std::cerr.rdbuf(original_cerr);
     }
 }
 
@@ -153,13 +172,16 @@ int main() {
     std::cout << "=========================================" << std::endl;
     std::cout << "ТЕСТИРОВАНИЕ" << std::endl;
     std::cout << "=========================================" << std::endl;
-    
-    std::stringstream buffer;
-    std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+   
+    std::stringstream output_buffer;
+    std::stringstream error_buffer;
+    std::streambuf* old_cout = std::cout.rdbuf(output_buffer.rdbuf());
+    std::streambuf* old_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
     
     int result = UnitTest::RunAllTests();
     
     std::cout.rdbuf(old_cout);
+    std::cerr.rdbuf(old_cerr);
     
     std::cout << "=========================================" << std::endl;
     std::cout << "ТЕСТИРОВАНИЕ ЗАВЕРШЕНО" << std::endl;
