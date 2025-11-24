@@ -19,7 +19,15 @@ bool Server::parseArgs(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "-a") == 0 && i + 1 < argc) {
             address_ = argv[++i];
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
-            port_ = std::stoi(argv[++i]);
+            int port = std::stoi(argv[++i]);
+            if (port != 33333) {
+                std::cerr << "Ошибка: указан порт " << port << ", но сервер работает только на порту 33333" << std::endl;
+                return false;
+            }
+          
+        } else if (strcmp(argv[i], "-p") == 0) {
+            std::cerr << "Ошибка: для параметра -p не указано значение" << std::endl;
+            return false;
         }
     }
     
@@ -68,7 +76,7 @@ bool Server::start() {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port_);
+    addr.sin_port = htons(33333);
     
     if (inet_pton(AF_INET, address_.c_str(), &addr.sin_addr) <= 0) {
         logger_.log("Ошибка преобразования адреса: " + address_, true);
@@ -77,7 +85,7 @@ bool Server::start() {
     }
     
     if (bind(server_sock_, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        logger_.log("Ошибка привязки сокета к адресу " + address_ + ":" + std::to_string(port_), true);
+        logger_.log("Ошибка привязки сокета к адресу " + address_ + ":33333", true);
         close(server_sock_);
         return false;
     }
@@ -90,10 +98,10 @@ bool Server::start() {
     
     running_ = true;
     
-    std::cout << "Сервер запущен на " << address_ << ":" << port_ << std::endl;
+    std::cout << "Сервер запущен на " << address_ << ":33333" << std::endl;
     std::cout << "Ожидание подключений..." << std::endl;
     
-    logger_.log("Сервер запущен на " + address_ + ":" + std::to_string(port_));
+    logger_.log("Сервер запущен на " + address_ + ":33333");
     
     while (running_) {
         sockaddr_in client_addr;

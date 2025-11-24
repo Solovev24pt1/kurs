@@ -54,7 +54,6 @@ class Server {
     std::string client_db_file_;
     std::string log_file_;
     std::string address_ = "127.0.0.1";
-    int port_ = 33333;
     ClientDB db_;
     Logger logger_;
     int server_sock_ = -1;
@@ -65,13 +64,13 @@ public:
 
 private:
     void printHelp() const {
-        std::cout << "Использование: ./server -d db.txt -LU log.txt -a 127.0.0.1 -p 33333" << std::endl;
+        std::cout << "Использование: ./server -d db.txt -LU log.txt [-a адрес]" << std::endl;
         std::cout << "Параметры:" << std::endl;
         std::cout << "  -d <file>    Файл базы клиентов (обязательный)" << std::endl;
         std::cout << "  -LU <file>   Файл логов (обязательный)" << std::endl;
         std::cout << "  -a <addr>    IP-адрес для привязки" << std::endl;
-        std::cout << "  -p <port>    Порт для прослушивания" << std::endl;
         std::cout << "  -h           Показать эту справку" << std::endl;
+        std::cout << "Примечание: параметр -p не поддерживается, сервер всегда работает на порту 33333" << std::endl;
     }
 
 public:
@@ -81,4 +80,4 @@ public:
     void stop();
 };
 
-#endif 
+#endif
