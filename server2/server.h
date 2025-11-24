@@ -64,13 +64,13 @@ public:
 
 private:
     void printHelp() const {
-        std::cout << "Использование: ./server -d db.txt -LU log.txt [-a адрес]" << std::endl;
+        std::cout << "Использование: ./server -d db.txt -LU log.txt -a 127.0.0.1 -p 33333" << std::endl;
         std::cout << "Параметры:" << std::endl;
         std::cout << "  -d <file>    Файл базы клиентов (обязательный)" << std::endl;
         std::cout << "  -LU <file>   Файл логов (обязательный)" << std::endl;
         std::cout << "  -a <addr>    IP-адрес для привязки" << std::endl;
         std::cout << "  -h           Показать эту справку" << std::endl;
-        std::cout << "Примечание: параметр -p не поддерживается, сервер всегда работает на порту 33333" << std::endl;
+       
     }
 
 public:

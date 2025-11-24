@@ -2,6 +2,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 
 Server::~Server() { stop(); }
 
@@ -12,33 +13,64 @@ bool Server::parseArgs(int argc, char* argv[]) {
     }
     
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
-            client_db_file_ = argv[++i];
-        } else if (strcmp(argv[i], "-LU") == 0 && i + 1 < argc) {
-            log_file_ = argv[++i];
-        } else if (strcmp(argv[i], "-a") == 0 && i + 1 < argc) {
-            address_ = argv[++i];
-        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
-            int port = std::stoi(argv[++i]);
-            if (port != 33333) {
-                std::cerr << "Ошибка: указан порт " << port << ", но сервер работает только на порту 33333" << std::endl;
+        if (strcmp(argv[i], "-d") == 0) {
+            if (i + 1 < argc) {
+                client_db_file_ = argv[++i];
+            } else {
+                std::cerr << "Ошибка: для параметра -d не указан файл базы клиентов" << std::endl;
                 return false;
             }
-          
+        } else if (strcmp(argv[i], "-LU") == 0) {
+            if (i + 1 < argc) {
+                std::string log_file = argv[++i];
+                if (log_file != "log.txt") {
+                    std::cerr << "Ошибка: файл логов должен называться 'log.txt', указан '" << log_file << "'" << std::endl;
+                    return false;
+                }
+                log_file_ = log_file;
+            } else {
+                std::cerr << "Ошибка: для параметра -LU не указан файл логов" << std::endl;
+                return false;
+            }
+        } else if (strcmp(argv[i], "-a") == 0) {
+            if (i + 1 < argc) {
+                address_ = argv[++i];
+            } else {
+                std::cerr << "Ошибка: для параметра -a не указан IP-адрес" << std::endl;
+                return false;
+            }
         } else if (strcmp(argv[i], "-p") == 0) {
-            std::cerr << "Ошибка: для параметра -p не указано значение" << std::endl;
+            if (i + 1 < argc) {
+                try {
+                    int port = std::stoi(argv[++i]);
+                    if (port != 33333) {
+                        std::cerr << "Ошибка: указан порт " << port << ", но сервер работает только на порту 33333" << std::endl;
+                        return false;
+                    }
+                    
+                } catch (const std::exception& e) {
+                    std::cerr << "Ошибка: неверный формат порта '" << argv[i] << "'" << std::endl;
+                    return false;
+                }
+            } else {
+                std::cerr << "Ошибка: для параметра -p не указан номер порта" << std::endl;
+                return false;
+            }
+        } else {
+            std::cerr << "Ошибка: неизвестный параметр '" << argv[i] << "'" << std::endl;
+            printHelp();
             return false;
         }
     }
     
     if (client_db_file_.empty()) {
-        std::cerr << "Ошибка: не указан файл базы клиентов" << std::endl;
+        std::cerr << "Ошибка: не указан файл базы клиентов (параметр -d)" << std::endl;
         printHelp();
         return false;
     }
     
     if (log_file_.empty()) {
-        std::cerr << "Ошибка: не указан файл логов" << std::endl;
+        std::cerr << "Ошибка: не указан файл логов (параметр -LU)" << std::endl;
         printHelp();
         return false;
     }
@@ -49,9 +81,18 @@ bool Server::parseArgs(int argc, char* argv[]) {
 bool Server::init(int argc, char* argv[]) {
     if (!parseArgs(argc, argv)) return false;
     
+   
+    std::ofstream log_test(log_file_, std::ios::app);
+    if (!log_test.is_open()) {
+        std::cerr << "Ошибка: невозможно открыть файл логов '" << log_file_ << "' для записи" << std::endl;
+        return false;
+    }
+    log_test.close();
+    
     logger_ = Logger(log_file_);
     
     if (!db_.load(client_db_file_)) {
+        std::cerr << "Ошибка: невозможно загрузить файл базы клиентов '" << client_db_file_ << "'" << std::endl;
         logger_.log("Ошибка загрузки базы клиентов: " + client_db_file_, true);
         return false;
     }
