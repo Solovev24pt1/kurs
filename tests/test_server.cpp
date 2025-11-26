@@ -3,26 +3,49 @@
 #include <sstream>
 #include <cstring>
 
+// ==================== ФИКСТУРЫ ДЛЯ ТЕСТОВ ====================
+
+struct ClientDBFixture {
+    ClientDB db;
+    
+    ClientDBFixture() {
+        db.load("db.txt");
+    }
+};
+
+struct ServerFixture {
+    Server server;
+    
+    ServerFixture() {
+        // Базовая инициализация сервера
+    }
+};
+
+struct LoggerFixture {
+    Logger logger;
+    
+    LoggerFixture() : logger("test.log") {
+    }
+};
+
 // ==================== ТЕСТЫ ДЛЯ ClientDB ====================
 
 SUITE(ClientDBTest) {
     
-    TEST(LoadExistingFile) {
-        ClientDB db;
-        CHECK(db.load("db.txt"));
+    TEST_FIXTURE(ClientDBFixture, LoadExistingFile) {
         CHECK(db.getClientCount() > 0);
     }
     
-    TEST(AuthWithRealCredentials) {
-        ClientDB db;
-        db.load("db.txt");
+    TEST_FIXTURE(ClientDBFixture, AuthWithRealCredentials) {
         CHECK(db.auth("user", "P@ssW0rd"));
     }
     
-    TEST(AuthFailureWithWrongPassword) {
-        ClientDB db;
-        db.load("db.txt");
+    TEST_FIXTURE(ClientDBFixture, AuthFailureWithWrongPassword) {
         CHECK(!db.auth("user", "wrong_password"));
+    }
+    
+    TEST_FIXTURE(ClientDBFixture, AuthNonExistentUser) {
+        CHECK(!db.auth("nonexistent_user", "any_password"));
     }
 }
 
@@ -30,14 +53,12 @@ SUITE(ClientDBTest) {
 
 SUITE(LoggerTest) {
     
-    TEST(LogToConsole) {
-        Logger logger("");
+    TEST_FIXTURE(LoggerFixture, LogToConsole) {
         logger.log("Console test message");
         CHECK(true);
     }
     
-    TEST(LogCriticalToConsole) {
-        Logger logger("");
+    TEST_FIXTURE(LoggerFixture, LogCriticalToConsole) {
         logger.log("Critical console error", true);
         CHECK(true);
     }
@@ -47,12 +68,11 @@ SUITE(LoggerTest) {
 
 SUITE(ServerTest) {
     
-    TEST(ParseRealArgs) {
-        Server server;
+    TEST_FIXTURE(ServerFixture, ParseRealArgs) {
         char* argv[] = {
             (char*)"server", 
             (char*)"-d", (char*)"db.txt", 
-            (char*)"-LU", (char*)"test_log",
+            (char*)"-LU", (char*)"log.txt",
             (char*)"-a", (char*)"127.0.0.1",
             (char*)"-p", (char*)"33333"
         };
@@ -60,30 +80,27 @@ SUITE(ServerTest) {
         CHECK(server.parseArgs(9, argv));
     }
     
-    TEST(ParseMinimalRealArgs) {
-        Server server;
+    TEST_FIXTURE(ServerFixture, ParseMinimalRealArgs) {
         char* argv[] = {
             (char*)"server", 
             (char*)"-d", (char*)"db.txt", 
-            (char*)"-LU", (char*)"test_log"
+            (char*)"-LU", (char*)"log.txt"
         };
         
         CHECK(server.parseArgs(5, argv));
     }
     
-    TEST(ParseHelp) {
-        Server server;
+    TEST_FIXTURE(ServerFixture, ParseHelp) {
         char* argv[] = {(char*)"server", (char*)"-h"};
         
         CHECK(!server.parseArgs(2, argv)); 
     }
     
-    TEST(ServerInitWithRealConfig) {
-        Server server;
+    TEST_FIXTURE(ServerFixture, ServerInitWithRealConfig) {
         char* argv[] = {
             (char*)"server", 
             (char*)"-d", (char*)"db.txt", 
-            (char*)"-LU", (char*)"test_log"
+            (char*)"-LU", (char*)"log.txt"
         };
         
         bool result = server.init(5, argv);
@@ -93,24 +110,27 @@ SUITE(ServerTest) {
 
 // ==================== ТЕСТЫ ДЛЯ ClientSession ====================
 
+struct ClientSessionFixture {
+    ClientDB db;
+    Logger logger;
+    int sockfd[2];
+    
+    ClientSessionFixture() : logger("test.log") {
+        db.load("db.txt");
+        socketpair(AF_UNIX, SOCK_STREAM, 0, sockfd);
+    }
+    
+    ~ClientSessionFixture() {
+        close(sockfd[0]);
+        close(sockfd[1]);
+    }
+};
+
 SUITE(ClientSessionTest) {
     
-    TEST(CreateClientSessionWithRealData) {
-        ClientDB db;
-        db.load("db.txt");
-        Logger logger("test.log");
-        
-        int sockfd[2];
-        if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockfd) == 0) {
-            ClientSession session(sockfd[0], db, logger);
-            
-            close(sockfd[0]);
-            close(sockfd[1]);
-            
-            CHECK(true);
-        } else {
-            CHECK(false);
-        }
+    TEST_FIXTURE(ClientSessionFixture, CreateClientSessionWithRealData) {
+        ClientSession session(sockfd[0], db, logger);
+        CHECK(true);
     }
 }
 
@@ -119,73 +139,45 @@ SUITE(ClientSessionTest) {
 SUITE(EdgeCaseTest) {
     
     TEST(LoadNonExistentFile) {
-   
-        std::stringstream error_buffer;
-        std::streambuf* original_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
-        
         ClientDB db;
         CHECK(!db.load("nonexistent_file.txt"));
-     
-        std::cerr.rdbuf(original_cerr);
     }
     
-    TEST(AuthNonExistentUser) {
-        ClientDB db;
-        db.load("db.txt");
-        CHECK(!db.auth("nonexistent_user", "any_password"));
-    }
-    
-    TEST(ParseInvalidArgs) {
-
-        std::stringstream error_buffer;
-        std::streambuf* original_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
-        
-        Server server;
+    TEST_FIXTURE(ServerFixture, ParseInvalidArgs) {
         char* argv[] = {(char*)"server"};
         CHECK(!server.parseArgs(1, argv));
-        
-     
-        std::cerr.rdbuf(original_cerr);
     }
     
-    TEST(ParseMissingRequiredArgs) {
-        std::stringstream error_buffer;
-        std::streambuf* original_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
-        
-        Server server;
+    TEST_FIXTURE(ServerFixture, ParseMissingRequiredArgs) {
         char* argv[] = {
             (char*)"server",
             (char*)"-d", (char*)"db.txt"
         };
         CHECK(!server.parseArgs(3, argv));
-        
-        // Восстанавливаем stderr
-        std::cerr.rdbuf(original_cerr);
     }
 }
 
 // ==================== ГЛАВНАЯ ФУНКЦИЯ ТЕСТОВ ====================
 
 int main() {
-    std::cout.setf(std::ios::unitbuf);
-    
-    std::cout << "=========================================" << std::endl;
-    std::cout << "ТЕСТИРОВАНИЕ" << std::endl;
-    std::cout << "=========================================" << std::endl;
    
-    std::stringstream output_buffer;
-    std::stringstream error_buffer;
-    std::streambuf* old_cout = std::cout.rdbuf(output_buffer.rdbuf());
-    std::streambuf* old_cerr = std::cerr.rdbuf(error_buffer.rdbuf());
+    std::stringstream null_stream;
+    std::streambuf* old_cout = std::cout.rdbuf(null_stream.rdbuf());
+    std::streambuf* old_cerr = std::cerr.rdbuf(null_stream.rdbuf());
     
+  
     int result = UnitTest::RunAllTests();
     
+
     std::cout.rdbuf(old_cout);
     std::cerr.rdbuf(old_cerr);
     
-    std::cout << "=========================================" << std::endl;
-    std::cout << "ТЕСТИРОВАНИЕ ЗАВЕРШЕНО" << std::endl;
-    std::cout << "=========================================" << std::endl;
+   
+    if (result == 0) {
+        std::cout << "Все тесты прошли успешно!" << std::endl;
+    } else {
+        std::cout << "Тесты не прошли. Код ошибки: " << result << std::endl;
+    }
     
     return result;
 }
