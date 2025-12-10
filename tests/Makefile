@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -I../server
+CXXFLAGS = -std=c++17 -Wall -Wextra -I../server
 LDFLAGS = -lssl -lcrypto -lUnitTest++
 
 SOURCES = test_server.cpp ../server2/Server.cpp ../server2/ClientDB.cpp ../server2/ClientSession.cpp ../server2/Logger.cpp

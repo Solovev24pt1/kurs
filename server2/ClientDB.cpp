@@ -1,3 +1,12 @@
+/**
+ * @file ClientDB.cpp
+ * @author Соловьев Арсений Евгеньевич
+ * @date 01.12.2025
+ * @copyright ПГУ
+ * @brief Реализация класса ClientDB
+ * @details Методы загрузки базы клиентов и аутентификации.
+ */
+
 #include "server.h"
 #include <fstream>
 #include <sstream>
@@ -5,6 +14,12 @@
 #include <iomanip>
 #include <algorithm>
 
+/**
+ * @brief Загрузка базы клиентов из файла
+ * @param filename Имя файла с базой
+ * @return true — успешно, false — ошибка
+ */
+ 
 bool ClientDB::load(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -25,6 +40,13 @@ bool ClientDB::load(const std::string& filename) {
     return true;
 }
 
+/**
+ * @brief Аутентификация по логину и паролю
+ * @param login Логин клиента
+ * @param password Пароль клиента
+ * @return true — аутентификация успешна, false — ошибка
+ */
+ 
 bool ClientDB::auth(const std::string& login, const std::string& password) const {
     auto it = clients_.find(login);
     if (it == clients_.end()) {
@@ -37,6 +59,14 @@ bool ClientDB::auth(const std::string& login, const std::string& password) const
     return result;
 }
 
+/**
+ * @brief Аутентификация с использованием хеша
+ * @param login Логин клиента
+ * @param received_hash Полученный хеш от клиента
+ * @param salt Соль, использованная при хешировании
+ * @return true — аутентификация успешна, false — ошибка
+ */
+ 
 bool ClientDB::authWithHash(const std::string& login, const std::string& received_hash, const std::string& salt) const {
     auto it = clients_.find(login);
     if (it == clients_.end()) {

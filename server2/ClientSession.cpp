@@ -1,11 +1,34 @@
+/**
+ * @file ClientSession.cpp
+ * @author Соловьев Арсений Евгеньевич
+ * @date 01.12.2025
+ * @copyright ПГУ
+ * @brief Реализация класса ClientSession
+ * @details Методы для работы с отдельной сессией клиента.
+ */
+
 #include "server.h"
 #include <endian.h>
 #include <cctype>
 #include <unistd.h>
 
+/**
+ * @brief Конструктор сессии
+ * @param sock Сокет соединения
+ * @param db База клиентов
+ * @param logger Логгер
+ */
+ 
 ClientSession::ClientSession(int sock, ClientDB& db, Logger& logger) 
     : sock_(sock), db_(db), logger_(logger) {}
 
+/**
+ * @brief Отправка всех данных
+ * @param buf Указатель на данные
+ * @param len Размер данных
+ * @return true — успешно, false — ошибка
+ */
+ 
 bool ClientSession::sendAll(const void* buf, size_t len) {
     const char* ptr = static_cast<const char*>(buf);
     while (len > 0) {
@@ -20,6 +43,13 @@ bool ClientSession::sendAll(const void* buf, size_t len) {
     return true;
 }
 
+/**
+ * @brief Приём всех данных
+ * @param buf Указатель на буфер
+ * @param len Размер данных
+ * @return true — успешно, false — ошибка
+ */
+ 
 bool ClientSession::recvAll(void* buf, size_t len) {
     char* ptr = static_cast<char*>(buf);
     while (len > 0) {
@@ -34,6 +64,11 @@ bool ClientSession::recvAll(void* buf, size_t len) {
     return true;
 }
 
+/**
+ * @brief Аутентификация клиента
+ * @return true — успешно, false — ошибка
+ */
+ 
 bool ClientSession::auth() {
     char buf[1024];
     ssize_t received = recv(sock_, buf, sizeof(buf) - 1, 0);
@@ -102,6 +137,11 @@ bool ClientSession::auth() {
     return true;
 }
 
+/**
+ * @brief Обработка векторов данных от клиента
+ * @return true — успешно, false — ошибка
+ */
+ 
 bool ClientSession::processVectors() {
     // Принимаем количество векторов (4 байта)
     uint32_t num_vectors;
@@ -209,6 +249,10 @@ bool ClientSession::processVectors() {
     return true;
 }
 
+/**
+ * @brief Запуск сессии клиента
+ */
+ 
 void ClientSession::run() {
     std::cout << "=== ЗАПУСК СЕССИИ ДЛЯ КЛИЕНТА ===" << std::endl;
     

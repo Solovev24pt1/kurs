@@ -1,8 +1,23 @@
+/**
+ * @file Logger.cpp
+ * @author Соловьев Арсений Евгеньевич
+ * @date 01.12.2025
+ * @copyright ПГУ
+ * @brief Реализация класса Logger
+ * @details Методы записи логов с временными метками.
+ */
+
 #include "server.h"
 #include <fstream>
 #include <chrono>
 #include <ctime>
 
+/**
+ * @brief Запись сообщения в лог
+ * @param msg Текст сообщения
+ * @param critical Флаг критичности (true — критическая ошибка)
+ */
+ 
 void Logger::log(const std::string& msg, bool critical) const {
     if (log_file_.empty()) {
         std::cout << msg << std::endl;

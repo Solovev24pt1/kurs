@@ -1,11 +1,29 @@
+/**
+ * @file server.cpp
+ * @author Соловьев Арсений Евгеньевич
+ * @date 01.12.2025
+ * @copyright ПГУ
+ * @brief Реализация класса Server
+ * @details Методы инициализации, запуска и остановки сервера.
+ */
+
 #include "server.h"
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
+/**
+ * @brief Деструктор Server
+ */
 Server::~Server() { stop(); }
 
+/**
+ * @brief Разбор аргументов командной строки
+ * @param argc Количество аргументов
+ * @param argv Массив аргументов
+ * @return true — успешно, false — ошибка
+ */
 bool Server::parseArgs(int argc, char* argv[]) {
     if (argc == 1 || (argc == 2 && strcmp(argv[1], "-h") == 0)) {
         printHelp();
@@ -78,10 +96,15 @@ bool Server::parseArgs(int argc, char* argv[]) {
     return true;
 }
 
+/**
+ * @brief Инициализация сервера
+ * @param argc Количество аргументов
+ * @param argv Массив аргументов
+ * @return true — успешно, false — ошибка
+ */
 bool Server::init(int argc, char* argv[]) {
     if (!parseArgs(argc, argv)) return false;
     
-   
     std::ofstream log_test(log_file_, std::ios::app);
     if (!log_test.is_open()) {
         std::cerr << "Ошибка: невозможно открыть файл логов '" << log_file_ << "' для записи" << std::endl;
@@ -102,6 +125,10 @@ bool Server::init(int argc, char* argv[]) {
     return true;
 }
 
+/**
+ * @brief Запуск сервера
+ * @return true — сервер запущен, false — ошибка
+ */
 bool Server::start() {
     server_sock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_sock_ < 0) {
@@ -176,6 +203,9 @@ bool Server::start() {
     return true;
 }
 
+/**
+ * @brief Остановка сервера
+ */
 void Server::stop() {
     running_ = false;
     if (server_sock_ != -1) {
