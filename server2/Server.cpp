@@ -1,94 +1,84 @@
 /**
  * @file server.cpp
  * @author Соловьев Арсений Евгеньевич
- * @date 01.12.2025
- * @copyright ПГУ
+ * @version 1.0
+ * @date 1.12.25
+ * @copyright ПГУ ИБСТ
  * @brief Реализация класса Server
- * @details Методы инициализации, запуска и остановки сервера.
  */
 
 #include "server.h"
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/stat.h>
 
 /**
- * @brief Деструктор Server
+ * @brief Деструктор класса Server
+ * @details Останавливает сервер и освобождает ресурсы.
  */
+ 
 Server::~Server() { stop(); }
 
 /**
- * @brief Разбор аргументов командной строки
+ * @brief Разбирает аргументы командной строки
  * @param argc Количество аргументов
  * @param argv Массив аргументов
- * @return true — успешно, false — ошибка
+ * @return true в случае успешного разбора, false в случае ошибки
+ * @details Поддерживает параметры: -d (файл базы), -LU (файл логов),
+ *          -a (адрес), -p (порт), -h (справка).
  */
+ 
 bool Server::parseArgs(int argc, char* argv[]) {
     if (argc == 1 || (argc == 2 && strcmp(argv[1], "-h") == 0)) {
         printHelp();
         return false;
     }
     
+    bool port_specified = false;
+    bool address_specified = false;
+    
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-d") == 0) {
-            if (i + 1 < argc) {
-                client_db_file_ = argv[++i];
-            } else {
-                std::cerr << "Ошибка: для параметра -d не указан файл базы клиентов" << std::endl;
-                return false;
-            }
-        } else if (strcmp(argv[i], "-LU") == 0) {
-            if (i + 1 < argc) {
-                std::string log_file = argv[++i];
-                if (log_file != "log.txt") {
-                    std::cerr << "Ошибка: файл логов должен называться 'log.txt', указан '" << log_file << "'" << std::endl;
+        if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
+            client_db_file_ = argv[++i];
+        } else if (strcmp(argv[i], "-LU") == 0 && i + 1 < argc) {
+            log_file_ = argv[++i];
+        } else if (strcmp(argv[i], "-a") == 0 && i + 1 < argc) {
+            address_ = argv[++i];
+            address_specified = true;
+        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            port_specified = true;
+            try {
+                int port = std::stoi(argv[++i]);
+                if (port < 1 || port > 65535) {
+                    std::cerr << "Ошибка: неверный порт" << std::endl;
                     return false;
                 }
-                log_file_ = log_file;
-            } else {
-                std::cerr << "Ошибка: для параметра -LU не указан файл логов" << std::endl;
+                port_ = port;
+            } catch (const std::exception& e) {
+                std::cerr << "Ошибка: неверный формат порта" << std::endl;
                 return false;
             }
-        } else if (strcmp(argv[i], "-a") == 0) {
-            if (i + 1 < argc) {
-                address_ = argv[++i];
-            } else {
-                std::cerr << "Ошибка: для параметра -a не указан IP-адрес" << std::endl;
-                return false;
-            }
-        } else if (strcmp(argv[i], "-p") == 0) {
-            if (i + 1 < argc) {
-                try {
-                    int port = std::stoi(argv[++i]);
-                    if (port != 33333) {
-                        std::cerr << "Ошибка: указан порт " << port << ", но сервер работает только на порту 33333" << std::endl;
-                        return false;
-                    }
-                    
-                } catch (const std::exception& e) {
-                    std::cerr << "Ошибка: неверный формат порта '" << argv[i] << "'" << std::endl;
-                    return false;
-                }
-            } else {
-                std::cerr << "Ошибка: для параметра -p не указан номер порта" << std::endl;
-                return false;
-            }
-        } else {
-            std::cerr << "Ошибка: неизвестный параметр '" << argv[i] << "'" << std::endl;
-            printHelp();
-            return false;
         }
     }
     
     if (client_db_file_.empty()) {
-        std::cerr << "Ошибка: не указан файл базы клиентов (параметр -d)" << std::endl;
+        std::cerr << "Ошибка: не указан файл базы клиентов" << std::endl;
         printHelp();
         return false;
     }
     
     if (log_file_.empty()) {
-        std::cerr << "Ошибка: не указан файл логов (параметр -LU)" << std::endl;
+        std::cerr << "Ошибка: не указан файл логов" << std::endl;
+        printHelp();
+        return false;
+    }
+    
+    if (!address_specified) {
+        address_ = "127.0.0.1";
+    }
+    
+    if (!port_specified) {
+        std::cerr << "Ошибка: не указан порт (параметр -p)" << std::endl;
         printHelp();
         return false;
     }
@@ -97,25 +87,25 @@ bool Server::parseArgs(int argc, char* argv[]) {
 }
 
 /**
- * @brief Инициализация сервера
+ * @brief Инициализирует сервер
  * @param argc Количество аргументов
  * @param argv Массив аргументов
- * @return true — успешно, false — ошибка
+ * @return true в случае успешной инициализации, false в случае ошибки
+ * @details Выполняет разбор аргументов, проверку порта, инициализацию логгера
+ *          и загрузку базы данных клиентов.
  */
+ 
 bool Server::init(int argc, char* argv[]) {
     if (!parseArgs(argc, argv)) return false;
     
-    std::ofstream log_test(log_file_, std::ios::app);
-    if (!log_test.is_open()) {
-        std::cerr << "Ошибка: невозможно открыть файл логов '" << log_file_ << "' для записи" << std::endl;
+    if (port_ < 1 || port_ > 65535) {
+        std::cerr << "Ошибка: некорректный порт " << port_ << ". Должен быть в диапазоне 1-65535" << std::endl;
         return false;
     }
-    log_test.close();
     
     logger_ = Logger(log_file_);
     
     if (!db_.load(client_db_file_)) {
-        std::cerr << "Ошибка: невозможно загрузить файл базы клиентов '" << client_db_file_ << "'" << std::endl;
         logger_.log("Ошибка загрузки базы клиентов: " + client_db_file_, true);
         return false;
     }
@@ -126,9 +116,12 @@ bool Server::init(int argc, char* argv[]) {
 }
 
 /**
- * @brief Запуск сервера
- * @return true — сервер запущен, false — ошибка
+ * @brief Запускает сервер
+ * @return true в случае успешного запуска, false в случае ошибки
+ * @details Создает TCP-сокет, привязывает к адресу, начинает прослушивание
+ *          и обрабатывает клиентские подключения в бесконечном цикле.
  */
+ 
 bool Server::start() {
     server_sock_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_sock_ < 0) {
@@ -144,7 +137,7 @@ bool Server::start() {
     sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(33333);
+    addr.sin_port = htons(port_);
     
     if (inet_pton(AF_INET, address_.c_str(), &addr.sin_addr) <= 0) {
         logger_.log("Ошибка преобразования адреса: " + address_, true);
@@ -153,7 +146,7 @@ bool Server::start() {
     }
     
     if (bind(server_sock_, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        logger_.log("Ошибка привязки сокета к адресу " + address_ + ":33333", true);
+        logger_.log("Ошибка привязки сокета к адресу " + address_ + ":" + std::to_string(port_), true);
         close(server_sock_);
         return false;
     }
@@ -166,10 +159,10 @@ bool Server::start() {
     
     running_ = true;
     
-    std::cout << "Сервер запущен на " << address_ << ":33333" << std::endl;
+    std::cout << "Сервер запущен на " << address_ << ":" << port_ << std::endl;
     std::cout << "Ожидание подключений..." << std::endl;
     
-    logger_.log("Сервер запущен на " + address_ + ":33333");
+    logger_.log("Сервер запущен на " + address_ + ":" + std::to_string(port_));
     
     while (running_) {
         sockaddr_in client_addr;
@@ -204,8 +197,10 @@ bool Server::start() {
 }
 
 /**
- * @brief Остановка сервера
+ * @brief Останавливает сервер
+ * @details Устанавливает флаг остановки и закрывает серверный сокет.
  */
+ 
 void Server::stop() {
     running_ = false;
     if (server_sock_ != -1) {

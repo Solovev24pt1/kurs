@@ -1,8 +1,8 @@
-PROJECT_NAME           = "Серверное приложение"
+PROJECT_NAME           = "Реализация сетевого сервера"
 PROJECT_NUMBER         = 1.0
 PROJECT_BRIEF          = "Клиент-серверное приложение с аутентификацией"
 OUTPUT_DIRECTORY       = doc
-INPUT                  = /home/stud/local_git/kurs333
+INPUT                  = /home/stud/local_git/kurs1/server2
 OUTPUT_LANGUAGE        = Russian
 GENERATE_LATEX         = Yes
 EXTRACT_PRIVATE        = Yes

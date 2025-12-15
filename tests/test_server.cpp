@@ -2,6 +2,8 @@
 #include <UnitTest++/UnitTest++.h>
 #include <sstream>
 #include <cstring>
+#include <cstdlib>
+#include <fcntl.h>
 
 // ==================== ФИКСТУРЫ ДЛЯ ТЕСТОВ ====================
 
@@ -87,15 +89,16 @@ SUITE(ServerTest) {
         CHECK(server.parseArgs(9, argv));
     }
     
-    // ТЕСТ 7: Тест парсинга минимальных аргументов
+    // ТЕСТ 7: Тест парсинга минимальных аргументов 
     TEST_FIXTURE(ServerFixture, ParseMinimalRealArgs) {
         char* argv[] = {
             (char*)"server", 
             (char*)"-d", (char*)"db.txt", 
-            (char*)"-LU", (char*)"log.txt"
+            (char*)"-LU", (char*)"log.txt",
+            (char*)"-p", (char*)"8080" 
         };
         
-        CHECK(server.parseArgs(5, argv));
+        CHECK(server.parseArgs(7, argv)); 
     }
     
     // ТЕСТ 1: Тест вызова справки
@@ -105,15 +108,16 @@ SUITE(ServerTest) {
         CHECK(!server.parseArgs(2, argv)); 
     }
     
-    // ТЕСТ 9: Тест инициализации сервера
+    // ТЕСТ 9: Тест инициализации сервера 
     TEST_FIXTURE(ServerFixture, ServerInitWithRealConfig) {
         char* argv[] = {
             (char*)"server", 
             (char*)"-d", (char*)"db.txt", 
-            (char*)"-LU", (char*)"log.txt"
+            (char*)"-LU", (char*)"log.txt",
+            (char*)"-p", (char*)"9090"  
         };
         
-        bool result = server.init(5, argv);
+        bool result = server.init(7, argv); 
         CHECK(result);
     }
 }
@@ -166,6 +170,7 @@ SUITE(EdgeCaseTest) {
         char* argv[] = {
             (char*)"server",
             (char*)"-d", (char*)"db.txt"
+           
         };
         CHECK(!server.parseArgs(3, argv));
     }

@@ -1,10 +1,10 @@
 /**
  * @file ClientDB.cpp
  * @author Соловьев Арсений Евгеньевич
- * @date 01.12.2025
- * @copyright ПГУ
- * @brief Реализация класса ClientDB
- * @details Методы загрузки базы клиентов и аутентификации.
+ * @version 1.0
+ * @date 1.12.25
+ * @copyright ПГУ ИБСТ
+ * @brief Реализация класса ClientDB для работы с базой данных клиентов
  */
 
 #include "server.h"
@@ -15,9 +15,12 @@
 #include <algorithm>
 
 /**
- * @brief Загрузка базы клиентов из файла
- * @param filename Имя файла с базой
- * @return true — успешно, false — ошибка
+ * @brief Загружает базу данных клиентов из файла
+ * @param filename Имя файла с базой данных
+ * @return true в случае успешной загрузки, false в случае ошибки
+ * @details Загружает пары логин-пароль из текстового файла.
+ *          Каждая строка файла должна содержать логин и пароль, разделенные пробелом.
+ *          Пустые строки и строки, начинающиеся с '#', игнорируются.
  */
  
 bool ClientDB::load(const std::string& filename) {
@@ -41,10 +44,12 @@ bool ClientDB::load(const std::string& filename) {
 }
 
 /**
- * @brief Аутентификация по логину и паролю
+ * @brief Аутентифицирует клиента по логину и паролю
  * @param login Логин клиента
  * @param password Пароль клиента
- * @return true — аутентификация успешна, false — ошибка
+ * @return true если аутентификация успешна, false в противном случае
+ * @details Проверяет наличие логина в базе и совпадение пароля.
+ *          Выводит результат проверки в стандартный вывод.
  */
  
 bool ClientDB::auth(const std::string& login, const std::string& password) const {
@@ -60,11 +65,13 @@ bool ClientDB::auth(const std::string& login, const std::string& password) const
 }
 
 /**
- * @brief Аутентификация с использованием хеша
+ * @brief Аутентифицирует клиента по хешу с использованием соли
  * @param login Логин клиента
  * @param received_hash Полученный хеш от клиента
- * @param salt Соль, использованная при хешировании
- * @return true — аутентификация успешна, false — ошибка
+ * @param salt Соль, использованная для хеширования
+ * @return true если аутентификация успешна, false в противном случае
+ * @details Вычисляет хеш SHA256 от соли и пароля, сравнивает с полученным хешем.
+ *          Используется в основном протоколе аутентификации сервера.
  */
  
 bool ClientDB::authWithHash(const std::string& login, const std::string& received_hash, const std::string& salt) const {
@@ -81,10 +88,8 @@ bool ClientDB::authWithHash(const std::string& login, const std::string& receive
     std::string password = it->second;
     std::cout << "Найден пароль для логина '" << login << "': '" << password << "'" << std::endl;
     
-    // Вычисляем ожидаемый хеш: SHA256(salt + password)
     std::string data = salt + password;
     
-    // Отладочный вывод байтов соли
     std::cout << "Соль (hex): ";
     for (char c : salt) {
         printf("%02x", (unsigned char)c);
@@ -105,7 +110,6 @@ bool ClientDB::authWithHash(const std::string& login, const std::string& receive
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256((unsigned char*)data.c_str(), data.length(), hash);
     
-    // Конвертируем в hex строку
     std::stringstream ss;
     for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
