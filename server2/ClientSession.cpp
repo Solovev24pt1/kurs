@@ -70,7 +70,7 @@ bool ClientSession::recvAll(void* buf, size_t len) {
 }
 
 /**
- * @brief Выполняет аутентификацию клиента
+ * @brief Выполняет аутентификация клиента
  * @return true в случае успешной аутентификации, false в случае ошибки
  * @details Ожидает сообщение аутентификации от клиента (84 байта: "user" + соль 16B + хеш 64B),
  *          проверяет формат и вызывает проверку хеша через ClientDB.
@@ -110,7 +110,7 @@ bool ClientSession::auth() {
     
     std::cout << "Логин: '" << login << "', Длина логина: " << login.length() << std::endl;
     std::cout << "Соль: " << salt << ", Длина соли: " << salt.length() << std::endl;
-    std::cout << "Полученный хеш: " << received_hash << ", Длина хеша: " << received_hash.length() << std::endl;
+    std::cout << "Полученный хеш: " << received_hash << ", Длина хеш: " << received_hash.length() << std::endl;
     
     auto is_hex = [](const std::string& str) {
         for (char c : str) {
@@ -149,7 +149,9 @@ bool ClientSession::auth() {
  * @brief Обрабатывает векторы данных от клиента
  * @return true в случае успешной обработки всех векторов, false в случае ошибки
  * @details Принимает векторы чисел в формате little-endian, вычисляет среднее арифметическое
- *          каждого вектора с проверкой переполнения и отправляет результаты обратно.
+ *          каждого вектора с проверкой переполнения. Отправляет результаты в двух форматах:
+ *          1. После каждого вектора (для совместимости с текущим клиентом)
+ *          2. В конце все результаты с заголовком (в соответствии с ТЗ 4.2.5)
  */
  
 bool ClientSession::processVectors() {
@@ -166,6 +168,12 @@ bool ClientSession::processVectors() {
     
     if (num_vectors == 0) {
         logger_.log("Получено 0 векторов", false);
+        
+        uint32_t zero_results = htole32(0);
+        if (!sendAll(&zero_results, sizeof(uint32_t))) {
+            logger_.log("Ошибка отправки количества результатов", false);
+            return false;
+        }
         return true;
     }
     
@@ -173,6 +181,10 @@ bool ClientSession::processVectors() {
         logger_.log("Слишком большое количество векторов: " + std::to_string(num_vectors), false);
         return false;
     }
+    
+    // Вектор для накопления всех результатов
+    std::vector<int64_t> all_results;
+    all_results.reserve(num_vectors);
     
     for (uint32_t i = 0; i < num_vectors; i++) {
         std::cout << "\n=== ОБРАБОТКА ВЕКТОРА " << i + 1 << " из " << num_vectors << " ===" << std::endl;
@@ -189,13 +201,17 @@ bool ClientSession::processVectors() {
         
         if (size == 0) {
             // Для пустого вектора результат = 0
-            int64_t result = 0;
-            result = htole64(result);
-            std::cout << "Пустой вектор, отправляем результат: 0" << std::endl;
-            if (!sendAll(&result, sizeof(int64_t))) {
+            all_results.push_back(0);
+            std::cout << "Пустой вектор, результат: 0" << std::endl;
+            
+            // Отправляем результат немедленно (для совместимости)
+            int64_t zero_result = htole64(0);
+            if (!sendAll(&zero_result, sizeof(int64_t))) {
                 logger_.log("Ошибка отправки результата для пустого вектора", false);
                 return false;
             }
+            std::cout << "Отправлен результат для пустого вектора: 0 (8 байт)" << std::endl;
+            
             continue;
         }
         
@@ -221,37 +237,46 @@ bool ClientSession::processVectors() {
             val = le64toh(val);
         }
         
-        // Вычисляем сумму с проверкой переполнения
+      
         int64_t sum = 0;
         bool overflow_up = false;
         bool overflow_down = false;
         
         for (const auto& val : data) {
             if (val > 0) {
-                if (sum > std::numeric_limits<int64_t>::max() - val) {
+              
+                if (val > std::numeric_limits<int64_t>::max() - sum) {
                     overflow_up = true;
                     break;
                 }
             } else if (val < 0) {
-                if (sum < std::numeric_limits<int64_t>::min() - val) {
+                
+                if (val < std::numeric_limits<int64_t>::min() - sum) {
                     overflow_down = true;
                     break;
                 }
             }
+           
             sum += val;
         }
         
         int64_t avg;
         if (overflow_up) {
-            avg = std::numeric_limits<int64_t>::max();
+            
+            avg = 0x8000000000000000LL; 
             std::cout << "Обнаружено переполнение вверх, результат: " << avg << std::endl;
         } else if (overflow_down) {
-            avg = std::numeric_limits<int64_t>::min();
+            
+            avg = std::numeric_limits<int64_t>::min();  
             std::cout << "Обнаружено переполнение вниз, результат: " << avg << std::endl;
         } else {
             avg = sum / static_cast<int64_t>(size);
             std::cout << "Сумма: " << sum << ", Среднее арифметическое: " << avg << std::endl;
         }
+        
+        
+        all_results.push_back(avg);
+        
         
         int64_t result_to_send = htole64(avg);
         std::cout << "Отправка результата для вектора " << i + 1 << ": " << avg << " (8 байт)" << std::endl;
@@ -261,10 +286,28 @@ bool ClientSession::processVectors() {
             return false;
         }
         
-        std::cout << "Успешно обработан вектор " << i + 1 << std::endl;
+        std::cout << "Вектор " << i + 1 << " успешно обработан" << std::endl;
     }
     
     std::cout << "\nВсе " << num_vectors << " векторов успешно обработаны" << std::endl;
+    
+
+    uint32_t num_results = htole32(static_cast<uint32_t>(all_results.size()));
+    std::cout << "Отправка количества результатов: " << all_results.size() << " (4 байта)" << std::endl;
+    
+   
+    sendAll(&num_results, sizeof(uint32_t));
+    
+    
+    for (size_t i = 0; i < all_results.size(); i++) {
+        int64_t result_to_send = htole64(all_results[i]);
+        std::cout << "Дополнительная отправка результата " << i + 1 << ": " 
+                  << all_results[i] << " (8 байт)" << std::endl;
+        sendAll(&result_to_send, sizeof(int64_t));
+    }
+    
+    std::cout << "Дополнительная отправка завершена" << std::endl;
+    
     return true;
 }
 
